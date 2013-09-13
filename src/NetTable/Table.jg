@@ -1,0 +1,234 @@
+# Copyright (c) 2010 Matt Fichman
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, APEXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+TableValue = Table|String|Int|Float|TableStub
+
+TableStub < Object {
+    # Stub for a table (when a table is mounted in directory mode) to indicate
+    # that a table is present, but prevent the entire table from being opened.
+}
+
+Table < Object {
+    # Contains a key-value mapping that's serialized over the network.  Each
+    # key can be a primitive, or another table.  When new keys are added, or
+    # old keys are removed/deleted, the change is automatically synced over the
+    # network to the peer.
+
+    table private = Hash[String,TableValue]()
+    # Hash of values -- this is the actual user data stored in the table.
+
+    id mutable Int 
+    # Numeric ID of this table.  Assigned when the table is created.
+
+    channels private = Queue[Chan[String]](0)
+    # Channels to notify when a key changes.  A string is enqueued in each
+    # registered channel whenever whenever the table is modified.
+
+    @init(pid Int) {
+        id = pid
+    }
+
+    @index(key String) TableValue {
+        # Returns the value stored at the given index.  If the value is not
+        # present, returns nil.
+        ret table[key]
+    }
+
+    @insert(key String, val TableValue) {
+        # Updates the value associated with the given key in the table.  For
+        # each registered channel, the key is enqueued to notify the channel
+        # that the table has changed.
+        table[key] = val
+        self.notify(key)
+    }
+
+    clear() {
+        # Clear all entries from the hash table. If the hash table is modified
+        # during a clear, the final state of the hash table may not be an empty
+        # hash table.
+        keys = Array[String](table.count) 
+        for key in table.keys {
+            keys.push(key)
+        }
+        table.clear()
+        for key in keys {
+            self.notify(key)
+        }
+    }
+
+    iter() HashIter[String,TableValue] {
+        # Iterates over all entries in the table. FIXME: Iterate over
+        # TableValues instead of TableEntrys
+        ret table.iter()
+    }
+    
+    subscribe(chan Chan[String]) {
+        # Instructs the table to notify the given channel when it is modified.
+        # When a value is writen using @insert, the corresponding key is
+        # enqueued on any registered channels.
+        channels.enq(chan) 
+    }
+
+    notify(key String) private {
+        # Notify all the channels that a key in the table has been modified
+        count mutable = channels.count
+        while count > 0 {
+            chan = channels.deq()
+            if chan.state == ChanState::OPEN {
+                chan.put(key)
+                channels.enq(chan)
+            }
+            --count
+        }
+    }
+}
+
+Handle < Object {
+    # Handle to an open table connection.  If on the server-side, then the
+    # handle records a connection by a client that has opened a file.
+    # Otherwise, the client must keep a reference to the handle and close it
+    # when it's finished reading or writing to the data.
+    table Table
+    uri = Uri::Uri('')
+    flags String
+    channel private ChanSet[Table,String]
+    socket private Socket::Stream
+    reader private Coroutine
+    writer private Coroutine
+
+    tables Array[Table]
+
+    @init(ptable Table, puri Uri::Uri, pflags String, pchannel ChanSet[Table,String], psocket Socket::Stream) {
+        table = ptable
+        uri = puri
+        flags = pflags
+        channel = pchannel
+        socket = psocket
+
+        if socket {
+            handle = self
+            reader = Coroutine() func() { handle.read() }
+            writer = Coroutine() func() { handle.write() }
+        }
+    }
+        
+    client?() Bool {
+        # Returns true if this is a client-side handle
+        ret uri.scheme == 'nt'
+    }
+
+    read_value() private TableValue {
+        # Reads a value from the payload part of the message
+        match socket.getbb() {
+        with 's'b: # String value
+            ret socket.getsb()
+        with 'i'b: # Integer value
+            ret socket.getib()
+        with 'f'b: # Float value
+            ret socket.getfb()
+        with 'n'b: # Nil value (delete)
+            ret nil
+        with 't'b: # Table value, defined by table ID
+            tid = socket.getib()
+            if tid < tables.count {
+                ret tables[tid]
+            } else if tid == tables.count {
+                val = Table(tid)
+                tables.push(val)
+                ret val
+            } else {
+                Os::panic('Table ID is too large')
+                ret nil
+            }
+        with *: 
+            Os::panic('Invalid type')
+            ret nil
+        }
+    }
+
+    read_msg() private {
+        # Reads and parses one message from the message stream
+        id = socket.getib() # Table identifier
+        key = socket.getsb() # Key that was modified  
+        val = self.read_value()
+        if socket.status != Io::StreamStatus::OK {
+            Os::panic('Socket closed (read)')
+        }
+        if id >= tables.count {
+            Os::panic('Invalid table ID')
+        }
+        table = tables[id]
+        table[key] = val
+    } 
+
+    read() {
+        # Reads messages from the socket until the connection drops.  When the
+        # connection drops, attempt to reestablish it.
+        while socket.status == Io::StreamStatus::OK {
+            self.read_msg()
+        }
+    }
+
+    write_msg() private {
+        # Reads one channel message and serializes it over the network
+    }
+
+    write() {
+        # Writes messages to the socket
+        while socket.status == Io::StreamStatus::OK {
+        }
+    }
+    
+    close() {
+        # Closes the table connection and drops all references to the table and
+        # nested tables.
+    }
+}
+
+export(port Int) {
+    # Expose the given path for reading/writing by a remote process.
+}
+
+open(source String, flags String) Handle {
+    # Finds the table at the given endpoint, and creates a copy of it in this
+    # process' address space.  The table remains synchronized with the remote
+    # end, until the table is closed or the last reference to it drops.
+    # Opening a table is much like opening a file in a file system.  When
+    # opening a table, the following flags can be used: 
+    #
+    # r - open the table for reading
+    # w - open the table for writing (only one writer is allowed)
+    # c - create the table if it doesn't exist
+    # d - open in "directory mode"; that is, do not recursively open subtables
+    # p - recursively create parent tables if necessary
+    ret nil
+}
+
+test() {
+    t = NetTable::open('nt://localhost:8888/foo/bar', 'rw')
+#    t['foo'] = 'bar'
+#    Io::println(t['foo'])
+#    for pair in t.iter() {
+#        key String = pair.first
+#        val String = pair.second.value
+#        Io::println("#{key} => #{val}")
+#        Io::println(pair.second.dirty.str)
+#    }
+}

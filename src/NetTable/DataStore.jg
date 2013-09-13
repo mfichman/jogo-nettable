@@ -1,0 +1,105 @@
+# Copyright (c) 2010 Matt Fichman
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, APEXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+DataStore < Object {
+    
+    remote = Hash[String,Handle]()
+    # Files opened within this datastore by remote processes
+
+    local = Hash[String,Handle]()
+    # Files opened within this datastore by local processes
+
+    root = Table(1)
+    # The root table of this data store.  Acts like the root directory in a
+    # Unix filesystem; the root is ultimate ancestor of all local tables.
+
+    export(port Int) {
+        # Start accepting connections an processing input from remote processes
+        # on the given port.  This function blocks until the listening socket
+        # encounters an error.
+        ds = self # FIXME: Self should not refer to the closure
+        ls = Socket::listen('', port)
+        while true {
+            sd = ls.accept()
+            coro = Coroutine() func() {
+                match sd.getbb() {
+                with 'o'b: 
+                    # open
+                with *: Os::panic('Unknown message type code')
+                }
+            }
+        }
+    }
+
+    open_local(uri Uri::Uri, flags String) private Handle {
+        # Opens a local table and returns a handle to it
+        ret nil
+    }
+
+    open_remote(uri Uri::Uri, flags String) private Handle {
+        # Opens a remote table
+        sd = Socket::connect(uri.host, uri.port) 
+
+        # Send an open message
+        sd.putbb('o'b) 
+        sd.putsb(uri.path.str)
+        sd.putsb(flags)
+    
+        # Receive the response message
+        match sd.getbb() { 
+        with 'e'b:
+            msg = sd.getsb()
+            Os::panic(msg)
+            ret nil
+        with 't'b:
+            # Acknowledged; table sent as a reply
+            cs = ChanSet[Table,String]()
+            table = Table(sd.getib())
+            ret Handle(table, uri, flags, cs, sd) 
+        with *: 
+            Os::panic('Unknown message type code')
+            ret nil
+        }
+
+#        reader = Coroutine() func() {
+#            # Sleep until we need to send a message
+#        } 
+#        reader()
+#        writer = Coroutine() func() {
+#            # Run the coroutine
+#        }
+#        writer()
+    }
+
+    open(source String, flags String) Handle {
+        # Connect to a remote process and get back a handle to a table (or
+        # table tree) which is used to update the table.
+        uri = Uri::Uri(source)
+        if uri.scheme == 'nt' {
+            ret self.open_remote(uri, flags)
+        } else if uri.scheme == '' {
+            ret self.open_local(uri, flags)
+        } else {
+            Os::panic("Invalid URI scheme: #{uri.scheme}")
+            ret nil
+        } 
+    }
+}
+
