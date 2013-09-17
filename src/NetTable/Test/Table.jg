@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-main() Int {
+chan_test() {
     chan = Chan[String](0)
     
     nt = NetTable::Table(0)
@@ -40,15 +40,40 @@ main() Int {
     nt['foo'] = 'bar'
     nt['baz'] = 'bat'
 
-
     for ent in nt {
         str String = ent.second
         Io::println("#{ent.first} => #{str}")
     }
     
     nt.clear()
-    
     Os::exit(0)
+}
+
+stream_test() {
+    srv = Coroutine() func() {
+        ls = Socket::listen('', 1000)
+        sd = NetTable::Stream(ls.accept().stream)
+        str String = sd.getval()
+        Io::println("{#{str}}")
+        int Int = sd.getval()
+        Io::println("{#{int}}")
+        float Float = sd.getval()
+        Io::println("{#{float}}")
+    }
+    srv()
+
+    cli = Coroutine() func() {
+        sd = NetTable::Stream(Socket::connect('127.0.0.1', 1000).stream)
+        sd.putval('hello, world')
+        sd.putval(0)
+        sd.putval(42.0)
+    }
+    cli()
+
+}
+
+main() Int {
+    stream_test()    
 
     ret 0
 }
