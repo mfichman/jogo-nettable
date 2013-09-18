@@ -1,0 +1,123 @@
+# Copyright (c) 2010 Matt Fichman
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, APEXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+Msg < Value {
+    # Represents the message format used by NetTable for sending primitives
+    # (tables, strings, ints, floats, etc)
+    id mutable Int # ID of the table that was modified
+    key mutable String # Key that was modified within the table
+    val mutable Val # The modified value for 'key'
+}
+
+Stream < Object {
+    # Handles serializing/deserializing NetTable values.  Basically, a
+    # NetTable::Stream is a wrapper around Stream that uses the NetTable
+    # protocol to serialize tables, strings, integers, etc. 
+    stream embedded Io::Stream
+    #datastore DataStore
+
+    @init(pstream Io::Stream) {
+        # Initializes a new NetTable::Stream from an Io::Stream. 
+        stream = pstream
+    }
+
+    gettable() Table {
+        # Reads a NetTable table from the stream.  Each NetTable is represented
+        # by an ID.  If the ID given has not been seen before, and is only just
+        # larger than the previous ID, then a new table was created by the
+        # remote peer.  Otherwise, 
+        tid = self.getib()
+        #if tid < datastore.tables.count {
+            #ret datastore.tables[tid]
+        #} else if tid == datastore.tables.count {
+            #val = Table(tid)
+            #datastore.tables.push(val)
+            #ret val
+        #} else {
+        #    Os::panic('Table ID is too large')
+        #    ret nil
+        #}
+        Os::panic('Not implemented')  
+        ret nil
+    }
+
+    getval() Val {
+        # Read a NetTable value from the stream.  Depending on the type prefix,
+        # this will be either a string, integer, float, nil, or table.
+        match self.getbb() {
+        with 's'b: ret self.getsb() # Binary string
+        with 'i'b: ret self.getib() # 64-bit integer
+        with 'f'b: ret self.getfb() # 64-bit floating-point
+        with 'n'b: ret nil # Nil value (delete)
+        with 't'b: ret self.gettable() # Table value, defined by table ID
+        with *: 
+            Os::panic('Invalid type')
+            ret nil
+        }
+    }
+
+    getmsg() Msg {
+        # Reads the next NetTable message from the stream.  The message is not
+        # considered valid if the stream is not in the "OK" state after this
+        # method returns. 
+        msg = Msg()
+        msg.id = self.getib()
+        msg.key = self.getsb()       
+        msg.val = self.getval()
+        ret msg
+    }     
+
+    puttable(table Table) {
+        # Writes a table to the stream.  This function writes the table ID,
+        # then writes the table keys if they also need to be sent.
+    }
+
+    putval(value Val) {
+        # Writes a NetTable value to the stream.  Each value is prefixed with a
+        # character code that identifies the type of the value.
+        if value is String {
+            self.putbb('s'b)
+            self.putsb(value)
+        } else if value is Float {
+            self.putbb('f'b)
+            self.putfb(value)
+        } else if value is Int {
+            self.putbb('i'b)
+            self.putib(value)
+        } else if value == nil {
+            self.putbb('n'b)
+        } else if value is Table {
+            self.putbb('t'b)
+            # self.putib
+            Os::panic('Not implemented')  
+        } else {
+            Os::panic('Invalid type')  
+        }
+    }
+
+    putmsg(msg Msg) {
+        # Writes a NetTable message to the stream.  The message was not written
+        # successfully if the stream is not in the OK state after this method
+        # returns.
+        self.putib(msg.id)
+        self.putsb(msg.key)
+        self.putval(msg.val)
+    }
+}
