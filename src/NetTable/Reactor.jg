@@ -18,6 +18,24 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+Id < Object {
+    # Key used to identify tables in the reactor.  The ID is a short name for
+    # the table's full path name.
+    val Int
+
+    @init(pval Int) {
+        val = pval
+    }
+
+    @equal(other Id) Bool {
+        ret val == other.val
+    }
+
+    hash?() Int {
+        ret val.hash
+    }
+}
+
 Reactor < Object {
     # Synchronizes tables over the given connection.  Whenever an "interesting"
     # table in the datastore changes, serialize the table to the stream.
@@ -26,30 +44,58 @@ Reactor < Object {
     # for the "read from network" direction, and another for the "write to
     # network" direction (read() and write() below).
 
-    channel private = ChanSet[Table,String]() # Channel for each table
+    cset private = ChanSet[Table,String]() # Channel for each table
     stream Stream # Connection to the remote peer
     data DataStore # Table file system 
-    request Table # Tables that are requested to be open
-    response Table # Tables that are acked open
+    input = Table() # Tables that are requested to be open
+    output = Table() # Tables that are acked open
+    active mutable Table
 
-    @init(pstream Stream, pdata DataStore) {
+    @init(pstream Io::Stream, pdata DataStore) {
         # Create a new reactor, which will synchronize the given datastore with
         # the given stream.
-        stream = pstream
+        stream = Stream(pstream)
         data = pdata
+        stream.input[Id(1)] = input
+        stream.output[output] = Id(1)
+
+        ch = Chan[String](0)
+        output.subscribe(ch)
+        cset.chan(output, ch)
+        
         this = self # FIXME!!
+        opener = Coroutine() func() { this.open() }
         reader = Coroutine() func() { this.read() }
         writer = Coroutine() func() { this.write() }
+
+        writer()
+        opener()
+        reader()
+
+        output['status'] = Table()
+        output['open'] = Table()
+        Io::println('done reactor')
     }
 
     read() { 
         # Read a stream of updates from the net and deserialize them to the
         # appropriate table.
-        sd = stream 
-        while sd.status == Io::StreamStatus::OK {
-            if sd.peek() == 'o'b { # Special open message.  Intercept.
-            } else if sd.peek() == 'k'b { # Special open ack.  Intercept. 
+        while stream.status == Io::StreamStatus::OK {
+            msg = stream.getmsg()
+            tid = Id(msg.id)
+            table = stream.input[tid]
+            if not table {
+                Os::panic("Table #{msg.id} not found")
             } else {
+                self.active = table
+                table[msg.key] = msg.val
+                self.active = nil
+            } 
+            if msg.val and msg.val is Table {
+                tab Table = msg.val
+                ch = Chan[String](0)
+                tab.subscribe(ch)
+                cset.chan(tab, ch)
             }
         }
     }
@@ -57,5 +103,44 @@ Reactor < Object {
     write() {
         # Write a stream of updates to the net following an update to an
         # interesting table.
+        for notif in cset {
+            table = notif.first
+            if active != table {
+                key = notif.second
+                tid = stream.output[table]
+                msg = Msg(tid.val, key, table[key])
+
+                if msg.val and msg.val is Table {
+                    tab Table = msg.val
+                    ch = Chan[String](0)
+                    tab.subscribe(ch)
+                    cset.chan(tab, ch)
+                }
+                Io::println('blocked')
+                stream.putmsg(msg)
+                stream.flush()
+                Io::println('unblocked')
+            }
+        }
+    }
+
+    open() {
+        # Read a stream updates from the input table to determine which tables
+        # the remote client has open.
+        ch = Chan[String](0)
+        open = watch(input, 'open')
+        open.subscribe(ch)
+        for uri in ch {
+            flags String = open[uri]
+            Io::println("open #{uri} #{flags}")
+#            flags String = input[uri]
+#            table = data.open(Uri::Path(uri), flags)
+#            if table {
+#                #output[uri] = table  
+#            } else {
+#                #output[uri] = 'error: table not found'
+#                Io::println('error')
+#            }
+        }
     }
 }

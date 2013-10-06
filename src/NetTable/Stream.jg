@@ -21,9 +21,36 @@
 Msg < Value {
     # Represents the message format used by NetTable for sending primitives
     # (tables, strings, ints, floats, etc)
-    id mutable Int # ID of the table that was modified
-    key mutable String # Key that was modified within the table
-    val mutable Val # The modified value for 'key'
+    id Int # ID of the table that was modified
+    key String # Key that was modified within the table
+    val Val # The modified value for 'key'
+
+    @init(pid Int, pkey String, pval Val) {
+        id = pid
+        key = pkey
+        val = pval
+    }
+
+    str?() String {
+        # Print a human-readable representation of this message
+        if not val {
+            ret "id=#{id} key=#{key} val=nil"
+        } else if val is String {
+            str String = val
+            ret "id=#{id} key=#{key} val=#{str}"   
+        } else if val is Int {
+            str String = val
+            int Int = val
+            ret "id=#{id} key=#{key} val=#{int}"   
+        } else if val is Table {
+            str String = val
+            ret "id=#{id} key=#{key} val=[table]"   
+        } else {
+            str String = val
+            Os::panic('Unknown value')
+            ret nil
+        }
+    }
 }
 
 Stream < Object {
@@ -31,7 +58,9 @@ Stream < Object {
     # NetTable::Stream is a wrapper around Stream that uses the NetTable
     # protocol to serialize tables, strings, integers, etc. 
     stream embedded Io::Stream
-    #datastore DataStore
+    input = Hash[Id,Table]() # Used to parse incoming IDs from the peer
+    output = Hash[Table,Id]() # Used to send IDs to the peer
+    id = 2
 
     @init(pstream Io::Stream) {
         # Initializes a new NetTable::Stream from an Io::Stream. 
@@ -42,20 +71,14 @@ Stream < Object {
         # Reads a NetTable table from the stream.  Each NetTable is represented
         # by an ID.  If the ID given has not been seen before, and is only just
         # larger than the previous ID, then a new table was created by the
-        # remote peer.  Otherwise, 
-        tid = self.getib()
-        #if tid < datastore.tables.count {
-            #ret datastore.tables[tid]
-        #} else if tid == datastore.tables.count {
-            #val = Table(tid)
-            #datastore.tables.push(val)
-            #ret val
-        #} else {
-        #    Os::panic('Table ID is too large')
-        #    ret nil
-        #}
-        Os::panic('Not implemented')  
-        ret nil
+        # remote peer. 
+        tid = Id(self.getib())
+        table mutable = input[tid]
+        if not table {
+            table = Table()
+            input[tid] = table
+        }
+        ret table
     }
 
     getval() Val {
@@ -64,7 +87,7 @@ Stream < Object {
         match self.getbb() {
         with 's'b: ret self.getsb() # Binary string
         with 'i'b: ret self.getib() # 64-bit integer
-        with 'f'b: ret self.getfb() # 64-bit floating-point
+        #with 'f'b: ret self.getfb() # 64-bit floating-point
         with 'n'b: ret nil # Nil value (delete)
         with 't'b: ret self.gettable() # Table value, defined by table ID
         with *: 
@@ -77,36 +100,41 @@ Stream < Object {
         # Reads the next NetTable message from the stream.  The message is not
         # considered valid if the stream is not in the "OK" state after this
         # method returns. 
-        msg = Msg()
-        msg.id = self.getib()
-        msg.key = self.getsb()       
-        msg.val = self.getval()
+        msg = Msg(self.getib(), self.getsb(), self.getval())
+
+        Io::println("get #{msg}")
         ret msg
     }     
 
     puttable(table Table) {
         # Writes a table to the stream.  This function writes the table ID,
         # then writes the table keys if they also need to be sent.
+        tid mutable = output[table]
+        if not tid {
+            # FixMe: Stream out the entire table?
+            tid = Id(id)
+            id = id+1
+        } 
+        self.putib(tid.val)        
     }
 
     putval(value Val) {
         # Writes a NetTable value to the stream.  Each value is prefixed with a
         # character code that identifies the type of the value.
-        if value is String {
+        if not value {
+            self.putbb('n'b)
+        } else if value is String {
             self.putbb('s'b)
             self.putsb(value)
-        } else if value is Float {
-            self.putbb('f'b)
-            self.putfb(value)
+        #} else if value is Float {
+        #    self.putbb('f'b)
+        #    self.putfb(value)
         } else if value is Int {
             self.putbb('i'b)
             self.putib(value)
-        } else if value == nil {
-            self.putbb('n'b)
         } else if value is Table {
             self.putbb('t'b)
-            # self.putib
-            Os::panic('Not implemented')  
+            self.puttable(value)
         } else {
             Os::panic('Invalid type')  
         }
@@ -119,5 +147,7 @@ Stream < Object {
         self.putib(msg.id)
         self.putsb(msg.key)
         self.putval(msg.val)
+
+        Io::println("put #{msg}")
     }
 }

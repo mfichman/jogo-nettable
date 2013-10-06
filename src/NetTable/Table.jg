@@ -18,7 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-Val = Table|String|Int|Float
+Val = Table|String|Int
+
+#|Float
 
 Table < Object {
     # Contains a key-value mapping that's serialized over the network.  Each
@@ -29,16 +31,13 @@ Table < Object {
     table private = Hash[String,Val]()
     # Hash of values -- this is the actual user data stored in the table.
 
-    id mutable Int 
-    # Numeric ID of this table.  Assigned when the table is created.
-
-    channels private = Queue[Chan[String]](0)
+    channels  = Queue[Chan[String]](0)
     # Channels to notify when a key changes.  A string is enqueued in each
     # registered channel whenever whenever the table is modified.
 
-    @init(pid Int) {
-        id = pid
-    }
+    flags private String
+    # Defines the flags attached to this table.  If the table is read-only,
+    # then 'r' will be in the flags set.
 
     @index(key String) Val {
         # Returns the value stored at the given index.  If the value is not
@@ -86,12 +85,41 @@ Table < Object {
         while count > 0 {
             chan = channels.deq()
             if chan.state == ChanState::OPEN {
+                Io::println('notifying')
                 chan.put(key)
+                Io::println('notified')
                 channels.enq(chan)
             }
             --count
         }
     }
+
+    @equal(other Table) native Bool {
+    }
+}
+
+watch(root Table, path String) Table {
+    # Returns a channel that watches the table at the given path.  If the table
+    # does not exist, this function blocks until it does.
+    table mutable = root
+    for key in path.split('/'b) {
+        val mutable = table[key]
+        tmp mutable Table
+        if val {
+            tmp = val
+        }
+        while not tmp {
+            ch = Chan[String](0)
+            table.subscribe(ch)
+            ch.next()
+            val = table[key]
+            if val {
+                tmp = val
+            }
+        } 
+        table = tmp
+    }
+    ret table
 }
 
 #export(port Int) {

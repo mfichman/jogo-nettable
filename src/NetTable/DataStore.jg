@@ -27,11 +27,30 @@ TableDesc < Object {
 
 DataStore < Object {
     
-    root = Table(1)
+    root = Table()
     # The root table of this data store.  Acts like the root directory in a
     # Unix filesystem; the root is ultimate ancestor of all local tables.
 
     tables = Array[Table](0)
     # List of all tables, ordered by ID.  FixMe: Use
+
+    open(uri Uri::Path, flags String) Table {
+        # Open a table at the given URI with the requested flags.  If the table
+        # can't be opened (possibly because another process owns the table)
+        # then this function returns nil.
+        table mutable = root 
+        for key in uri.str.split('/'b) {
+            tmp mutable = table[key]
+            if not tmp {
+                if flags.contains('p'b) {
+                    tmp = Table()
+                } else {
+                    ret nil
+                } 
+            } 
+            table = tmp
+        }
+        ret table
+    }
 }
 

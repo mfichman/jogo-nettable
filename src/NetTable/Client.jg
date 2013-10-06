@@ -27,17 +27,35 @@ Client < Object {
 
     host String # Host the client is connected to.
     port Int # Port the client is connected to.
-    stream Stream 
+    reactor Reactor
 
     @init(data DataStore, phost String, pport Int) {
         host = phost
-        port = port
-        stream = Stream(Socket::connect(host, port).stream)
-        reactor = Reactor(stream, data)
+        port = pport
+        stream = Socket::connect(host, port)
+        reactor = Reactor(stream.stream, data)
     }
 
     open(path Uri::Path, flags String) {
         # Opens a table on the remote process, and returns a handle to that
         # table.
+        ch = Chan[String](0)
+        status = watch(reactor.input, 'status')
+        Io::println('here')
+        status.subscribe(ch)
+
+
+            
+        open Table = reactor.output['open']
+        yield
+        yield
+        open[path.str] = flags
+        Io::println('here')
+        Io::println(open.channels.count.str)
+        dump_all_coroutines()
+
+        for key in ch {
+            Io::println(key)         
+        }
     }
 }

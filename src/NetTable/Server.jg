@@ -29,11 +29,11 @@ Server < Object {
         data = pdata
     }
 
-    listen(port Int) {
+    listen(host String, port Int) {
         srv = self # FIXME
-        ls = Socket::listen('', port)
+        ls = Socket::listen(host, port)
         while true {
-            stream = Stream(ls.accept().stream)
+            stream = ls.accept().stream
             reactor = Reactor(stream, data)
         }
     }  

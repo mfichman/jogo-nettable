@@ -21,7 +21,7 @@
 chan_test() {
     chan = Chan[String](0)
     
-    nt = NetTable::Table(0)
+    nt = NetTable::Table()
     nt.subscribe(chan)
 
     task = Coroutine() func() {
@@ -51,29 +51,38 @@ chan_test() {
 
 stream_test() {
     srv = Coroutine() func() {
-        ls = Socket::listen('', 1000)
+        ls = Socket::listen('', 10000)
         sd = NetTable::Stream(ls.accept().stream)
         str String = sd.getval()
         Io::println("{#{str}}")
         int Int = sd.getval()
         Io::println("{#{int}}")
-        float Float = sd.getval()
-        Io::println("{#{float}}")
+        #float Float = sd.getval()
+        #Io::println("{#{float}}")
     }
     srv()
 
     cli = Coroutine() func() {
-        sd = NetTable::Stream(Socket::connect('127.0.0.1', 1000).stream)
+        sd = NetTable::Stream(Socket::connect('127.0.0.1', 10000).stream)
         sd.putval('hello, world')
         sd.putval(0)
-        sd.putval(42.0)
+        #sd.putval(42.0)
     }
     cli()
 
 }
 
-main() Int {
-    stream_test()    
+full_test() {
+    srv = NetTable::Server(NetTable::DataStore())
+    co = Coroutine() func() { srv.listen('127.0.0.1', 10000) }
+    co()
+    cli = NetTable::Client(NetTable::DataStore(), 'localhost', 10000)
+    cli.open(Uri::Path('/foo/bar'), 'w')
+    
+    Io::println('connected')
+}
 
+main() Int {
+    full_test()
     ret 0
 }
