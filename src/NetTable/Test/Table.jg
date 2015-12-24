@@ -60,22 +60,30 @@ stream_test() {
         #float Float = sd.getval()
         #Io::println("{#{float}}")
     }
-    srv()
+    Io::manager().task(srv)
 
     cli = Coroutine() func() {
+        Io::println('here')
         sd = NetTable::Stream(Socket::connect('127.0.0.1', 10000).stream)
+        Io::println('here')
         sd.putval('hello, world')
         sd.putval(0)
+        sd.flush()
+        sd.putval('hello, world')
+        sd.putval(0)
+        sd.flush()
         #sd.putval(42.0)
     }
-    cli()
-
+    Io::manager().task(cli)
 }
 
 full_test() {
     srv = NetTable::Server(NetTable::DataStore())
-    co = Coroutine() func() { srv.listen('127.0.0.1', 10000) }
-    co()
+    co = Coroutine() func() { 
+        srv.listen('127.0.0.1', 10000) 
+    }
+    #co()
+    Io::manager().task(co)
     cli = NetTable::Client(NetTable::DataStore(), 'localhost', 10000)
     cli.open(Uri::Path('/foo/bar'), 'w')
     
@@ -84,5 +92,6 @@ full_test() {
 
 main() Int {
     full_test()
+#    stream_test()
     ret 0
 }
