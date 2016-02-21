@@ -49,6 +49,7 @@ Table < Object {
         # Updates the value associated with the given key in the table.  For
         # each registered channel, the key is enqueued to notify the channel
         # that the table has changed.
+        Io::println("#{self}['#{key}'] channels=#{channels.count}")
         table[key] = val
         self.notify(key)
     }
@@ -85,9 +86,7 @@ Table < Object {
         while count > 0 {
             chan = channels.deq()
             if chan.state == ChanState::OPEN {
-                Io::println('notifying')
                 chan.put(key)
-                Io::println('notified')
                 channels.enq(chan)
             }
             --count
@@ -95,6 +94,9 @@ Table < Object {
     }
 
     @equal(other Table) native Bool {
+    }
+
+    str?() native String {
     }
 }
 

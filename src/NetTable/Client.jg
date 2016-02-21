@@ -41,21 +41,9 @@ Client < Object {
         # table.
         ch = Chan[String](0)
         status = watch(reactor.input, 'status')
-        Io::println('here')
         status.subscribe(ch)
 
-
-            
         open Table = reactor.output['open']
-        yield
-        yield
         open[path.str] = flags
-        Io::println('here')
-        Io::println(open.channels.count.str)
-        dump_all_coroutines()
-
-        for key in ch {
-            Io::println(key)         
-        }
     }
 }

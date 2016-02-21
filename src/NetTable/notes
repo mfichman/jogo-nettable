@@ -1,0 +1,15 @@
+2f0150 => listen() [x] 
+2eecd0 => connect() [x]
+
+
+
+305040 => NetTable::Stream::getib() [x]
+305120 => NetTable::Stream::flush() [x] (again?)
+
+2f0150 => listen() 
+
+30a310 => NetTable::Stream::getib()
+30a4a0 => NetTable::Stream::flush()
+
+
+

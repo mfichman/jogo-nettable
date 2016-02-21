@@ -69,12 +69,12 @@ Reactor < Object {
         writer = Coroutine() func() { this.write() }
 
         writer()
-        opener()
-        reader()
+        Io::manager().task(writer)
+        Io::manager().task(opener)
+        Io::manager().task(reader)
 
         output['status'] = Table()
         output['open'] = Table()
-        Io::println('done reactor')
     }
 
     read() { 
@@ -116,10 +116,8 @@ Reactor < Object {
                     tab.subscribe(ch)
                     cset.chan(tab, ch)
                 }
-                Io::println('blocked')
                 stream.putmsg(msg)
                 stream.flush()
-                Io::println('unblocked')
             }
         }
     }
@@ -129,6 +127,7 @@ Reactor < Object {
         # the remote client has open.
         ch = Chan[String](0)
         open = watch(input, 'open')
+        Io::println('opened')
         open.subscribe(ch)
         for uri in ch {
             flags String = open[uri]

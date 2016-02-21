@@ -1,0 +1,10 @@
+*.exe
+*.ilk
+*.jgmake
+*.obj
+*.pdb
+*.swp
+.build
+bin
+build
+lib
