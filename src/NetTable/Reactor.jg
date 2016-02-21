@@ -49,7 +49,7 @@ Reactor < Object {
     data DataStore # Table file system 
     input = Table() # Tables that are requested to be open
     output = Table() # Tables that are acked open
-    active mutable Table
+    active var Table
 
     @init(pstream Io::Stream, pdata DataStore) {
         # Create a new reactor, which will synchronize the given datastore with

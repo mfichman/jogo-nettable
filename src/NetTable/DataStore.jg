@@ -38,9 +38,9 @@ DataStore < Object {
         # Open a table at the given URI with the requested flags.  If the table
         # can't be opened (possibly because another process owns the table)
         # then this function returns nil.
-        table mutable = root 
+        table var = root 
         for key in uri.str.split('/'b) {
-            tmp mutable = table[key]
+            tmp var = table[key]
             if not tmp {
                 if flags.contains('p'b) {
                     tmp = Table()

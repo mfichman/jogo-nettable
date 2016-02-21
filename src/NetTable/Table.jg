@@ -81,7 +81,7 @@ Table < Object {
 
     notify(key String) private {
         # Notify all the channels that a key in the table was modified
-        count mutable = channels.count
+        count var = channels.count
         while count > 0 {
             chan = channels.deq()
             if chan.state == ChanState::OPEN {
@@ -101,10 +101,10 @@ Table < Object {
 watch(root Table, path String) Table {
     # Returns a channel that watches the table at the given path.  If the table
     # does not exist, this function blocks until it does.
-    table mutable = root
+    table var = root
     for key in path.split('/'b) {
-        val mutable = table[key]
-        tmp mutable Table
+        val var = table[key]
+        tmp var Table
         if val {
             tmp = val
         }

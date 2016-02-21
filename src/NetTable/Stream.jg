@@ -73,7 +73,7 @@ Stream < Object {
         # larger than the previous ID, then a new table was created by the
         # remote peer. 
         tid = Id(self.getib())
-        table mutable = input[tid]
+        table var = input[tid]
         if not table {
             table = Table()
             input[tid] = table
@@ -109,7 +109,7 @@ Stream < Object {
     puttable(table Table) {
         # Writes a table to the stream.  This function writes the table ID,
         # then writes the table keys if they also need to be sent.
-        tid mutable = output[table]
+        tid var = output[table]
         if not tid {
             # FixMe: Stream out the entire table?
             tid = Id(id)
